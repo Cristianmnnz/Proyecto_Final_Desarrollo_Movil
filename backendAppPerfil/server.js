@@ -19,7 +19,10 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 // -------- REGISTER --------
 app.post("/api/register", async (req, res) => {
   try {
+    console.log("📥 BODY REGISTER:", req.body); // ✅ LOG 1: lo que llega
+
     const { name, age, sex, email, password } = req.body;
+
     if (!name || !age || !sex || !email || !password) {
       return res.status(400).json({ msg: "Faltan campos" });
     }
@@ -34,18 +37,23 @@ app.post("/api/register", async (req, res) => {
       .input("email", sql.NVarChar, email)
       .input("password_hash", sql.NVarChar, hash)
       .query(`
-        INSERT INTO users (name, age, sex, email, password_hash)
+        INSERT INTO dbo.users (name, age, sex, email, password_hash)
         VALUES (@name, @age, @sex, @email, @password_hash)
       `);
 
     res.json({ msg: "Usuario registrado ✅" });
+
   } catch (err) {
-    if (err.number === 2627) { // unique constraint
+    console.log("❌ ERROR REGISTER:", err); // ✅ LOG 2: error real
+
+    if (err.number === 2627) {
       return res.status(409).json({ msg: "Email ya registrado" });
     }
+
     res.status(500).json({ msg: "Error servidor", err });
   }
 });
+
 
 // -------- LOGIN --------
 app.post("/api/login", async (req, res) => {
@@ -55,7 +63,7 @@ app.post("/api/login", async (req, res) => {
 
     const result = await pool.request()
       .input("email", sql.NVarChar, email)
-      .query("SELECT * FROM users WHERE email=@email");
+      .query("SELECT * FROM dbo.users WHERE email=@email");
 
     if (result.recordset.length === 0) {
       return res.status(401).json({ msg: "Credenciales inválidas" });
@@ -90,21 +98,29 @@ app.post("/api/login", async (req, res) => {
 // -------- PROFILE --------
 app.get("/api/profile", authMiddleware, async (req, res) => {
   try {
-    const pool = await poolPromise;
+    console.log("📥 PROFILE for user id:", req.user.id);
 
+    const pool = await poolPromise;
     const result = await pool.request()
       .input("id", sql.Int, req.user.id)
-      .query("SELECT id,name,age,sex,email,photo_url FROM users WHERE id=@id");
+      .query(`
+        SELECT id, name, age, sex, email, photo_url
+        FROM dbo.users
+        WHERE id=@id
+      `);
 
     if (result.recordset.length === 0) {
       return res.status(404).json({ msg: "No existe usuario" });
     }
 
     res.json(result.recordset[0]);
+
   } catch (err) {
+    console.log("❌ ERROR PROFILE:", err);   // ✅ error real
     res.status(500).json({ msg: "Error servidor", err });
   }
 });
+
 
 // -------- UPLOAD PHOTO (base64) --------
 app.post("/api/profile/photo", authMiddleware, async (req, res) => {
@@ -125,7 +141,7 @@ app.post("/api/profile/photo", authMiddleware, async (req, res) => {
     await pool.request()
       .input("photo_url", sql.NVarChar, publicUrl)
       .input("id", sql.Int, req.user.id)
-      .query("UPDATE users SET photo_url=@photo_url WHERE id=@id");
+      .query("UPDATE dbo.users SET photo_url=@photo_url WHERE id=@id");
 
     res.json({ photoUrl: publicUrl });
   } catch (err) {
